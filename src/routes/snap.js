@@ -8,19 +8,26 @@ const cache = new LRUCache({ max: 1000, ttl: 1000 * 60 * 30 }); // 30 min
 // Fonction pour appeler Apify avec timeout et retry
 async function getSnapFromApify(username) {
   const client = new ApifyClient({
-    token: process.env.APIFY_TOKEN,
-    timeoutMillis: 15000
+    token: process.env.APIFY_TOKEN
   });
 
   const profileUrl = `https://www.snapchat.com/add/${encodeURIComponent(username)}`;
   
   console.log(`[Apify] Fetching profile for: ${username}`);
   
-  const run = await client.actor("MSBBFGGih1fp9gKDq").call({
-    profilesInput: [profileUrl]
-  });
-
-  const { items } = await client.dataset(run.defaultDatasetId).listItems();
+  // Timeout manual avec Promise.race
+  const timeoutPromise = new Promise((_, reject) => 
+    setTimeout(() => reject(new Error("Request timeout after 15s")), 15000)
+  );
+  
+  const apifyCall = async () => {
+    const run = await client.actor("MSBBFGGih1fp9gKDq").call({
+      profilesInput: [profileUrl]
+    });
+    return await client.dataset(run.defaultDatasetId).listItems();
+  };
+  
+  const { items } = await Promise.race([apifyCall(), timeoutPromise]);
   
   if (!items || items.length === 0) {
     throw new Error("Profile not found or no data returned");
