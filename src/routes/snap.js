@@ -7,14 +7,22 @@ const cache = new LRUCache({ max: 1000, ttl: 1000 * 60 * 30 }); // 30 min
 
 // Fonction simplifiée pour appeler Apify
 async function getSnapFromApify(username) {
+  // Debug : vérifier si le token est présent
+  const token = process.env.APIFY_TOKEN;
+  console.log(`[Debug] Token present: ${!!token}, Length: ${token?.length || 0}`);
+  
+  if (!token) {
+    throw new Error("APIFY_TOKEN environment variable is missing");
+  }
+  
   // Client Apify basique sans options avancées
   const client = new ApifyClient({
-    token: process.env.APIFY_TOKEN
+    token: token
   });
 
   const profileUrl = `https://www.snapchat.com/add/${encodeURIComponent(username)}`;
   
-  console.log(`[Apify v3] Fetching profile for: ${username}`);
+  console.log(`[Apify v4] Fetching profile for: ${username}`);
   
   try {
     // Appel direct sans timeout custom - on laisse Apify gérer
