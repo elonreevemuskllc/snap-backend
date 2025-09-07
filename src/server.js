@@ -22,24 +22,6 @@ app.get("/health", (req, res) => {
   res.json({ ok: true, ts: Date.now(), env: process.env.NODE_ENV || "dev" });
 });
 
-// ⚠️ Route temporaire pour valider le pipeline
-app.post("/api/snap/lookup", async (req, res) => {
-  const u = String(req.body?.username || "").trim();
-  if (!/^[a-zA-Z0-9._-]{1,32}$/.test(u)) return res.status(400).json({ error: "invalid_username" });
-
-  try {
-    // temporaire pour valider le pipeline:
-    res.json({
-      ok: true,
-      cached: false,
-      data: { username: u, displayName: "TEMP OK (Railway)", fetchedAt: new Date().toISOString() }
-    });
-  } catch (e) {
-    console.error("lookup error:", e?.name, e?.message);
-    res.status(502).json({ error: "upstream_error" });
-  }
-});
-
 app.use("/api/snap", snapRouter);
 
 // Health check endpoint pour Railway
