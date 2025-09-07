@@ -5,49 +5,48 @@ import { LRUCache } from "lru-cache";
 const router = express.Router();
 const cache = new LRUCache({ max: 1000, ttl: 1000 * 60 * 30 }); // 30 min
 
-// Fonction pour appeler Apify avec timeout et retry
+// Fonction simplifiée pour appeler Apify
 async function getSnapFromApify(username) {
+  // Client Apify basique sans options avancées
   const client = new ApifyClient({
     token: process.env.APIFY_TOKEN
   });
 
   const profileUrl = `https://www.snapchat.com/add/${encodeURIComponent(username)}`;
   
-  console.log(`[Apify] Fetching profile for: ${username}`);
+  console.log(`[Apify v3] Fetching profile for: ${username}`);
   
-  // Timeout manual avec Promise.race
-  const timeoutPromise = new Promise((_, reject) => 
-    setTimeout(() => reject(new Error("Request timeout after 15s")), 15000)
-  );
-  
-  const apifyCall = async () => {
+  try {
+    // Appel direct sans timeout custom - on laisse Apify gérer
     const run = await client.actor("MSBBFGGih1fp9gKDq").call({
       profilesInput: [profileUrl]
     });
-    return await client.dataset(run.defaultDatasetId).listItems();
-  };
-  
-  const { items } = await Promise.race([apifyCall(), timeoutPromise]);
-  
-  if (!items || items.length === 0) {
-    throw new Error("Profile not found or no data returned");
-  }
 
-  return {
-    profileUrl: items[0].profileUrl ?? null,
-    displayName: items[0].username1 ?? null,
-    username: items[0].username2 ?? username,
-    profileImageUrl: items[0].profileImageUrl ?? null,
-    profileDescription: items[0].profileDescription ?? null,
-    profileLocation: items[0].profileLocation ?? null,
-    subscribers: typeof items[0].subscribers === "number" ? items[0].subscribers : null,
-    category: items[0].category ?? null,
-    websiteUrl: items[0].websiteUrl ?? null,
-    snapcodeImageUrl: items[0].snapcodeImageUrl ?? null,
-    stories: Array.isArray(items[0].stories) ? items[0].stories : [],
-    spotlights: Array.isArray(items[0].spotlights) ? items[0].spotlights : [],
-    fetchedAt: new Date().toISOString(),
-  };
+    const { items } = await client.dataset(run.defaultDatasetId).listItems();
+    
+    if (!items || items.length === 0) {
+      throw new Error("Profile not found or no data returned");
+    }
+
+    return {
+      profileUrl: items[0].profileUrl ?? null,
+      displayName: items[0].username1 ?? null,
+      username: items[0].username2 ?? username,
+      profileImageUrl: items[0].profileImageUrl ?? null,
+      profileDescription: items[0].profileDescription ?? null,
+      profileLocation: items[0].profileLocation ?? null,
+      subscribers: typeof items[0].subscribers === "number" ? items[0].subscribers : null,
+      category: items[0].category ?? null,
+      websiteUrl: items[0].websiteUrl ?? null,
+      snapcodeImageUrl: items[0].snapcodeImageUrl ?? null,
+      stories: Array.isArray(items[0].stories) ? items[0].stories : [],
+      spotlights: Array.isArray(items[0].spotlights) ? items[0].spotlights : [],
+      fetchedAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    console.error("[Apify Error]:", error?.message, error?.statusCode);
+    throw error;
+  }
 }
 
 // Route POST principale
@@ -64,26 +63,19 @@ router.post("/lookup", async (req, res) => {
     return res.json({ ok: true, cached: true, data: cached });
   }
 
-  // Retry logic avec backoff
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      const data = await getSnapFromApify(u);
-      
-      // Mettre en cache et retourner
-      cache.set(cacheKey, data);
-      return res.json({ ok: true, cached: false, data });
-      
-    } catch (e) {
-      console.error(`[Attempt ${attempt}] upstream:`, e?.message, e?.statusCode);
-      
-      // Si c'est le dernier essai, retourner l'erreur
-      if (attempt === 2) {
-        return res.status(502).json({ error: "upstream_error", detail: String(e?.message).slice(0, 200) });
-      }
-      
-      // Sinon attendre un peu avant de retry
-      await new Promise(resolve => setTimeout(resolve, 800));
-    }
+  try {
+    const data = await getSnapFromApify(u);
+    
+    // Mettre en cache et retourner
+    cache.set(cacheKey, data);
+    return res.json({ ok: true, cached: false, data });
+    
+  } catch (e) {
+    console.error("Lookup error:", e?.message, e?.statusCode);
+    return res.status(502).json({ 
+      error: "upstream_error", 
+      detail: String(e?.message).slice(0, 200) 
+    });
   }
 });
 
